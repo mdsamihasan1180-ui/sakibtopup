@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: sakib-top-up-shop
+    runtime: node
+    plan: free
+    buildCommand: echo "no build"
+    startCommand: node server.js
+    envVars:
+      - key: FFX-PASS      # /admin/site (CMS) এর পাসওয়ার্ড
+        sync: false

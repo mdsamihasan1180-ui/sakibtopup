@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="bn"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow">
+<title>Admin Panel</title>
+<style>
+:root{--bg:#0b1630;--card:#12204a;--line:#223468;--tx:#e8eeff;--mu:#93a3cf;--pr:#2f6bff;--ok:#16a34a;--bad:#dc2626;--wa:#f59e0b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.5 system-ui,"Noto Sans Bengali",sans-serif}
+header{display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;flex-wrap:wrap}
+header h1{font-size:17px;margin:0;flex:1}a{color:#8db0ff}
+nav{display:flex;gap:6px;padding:10px 16px;overflow:auto}nav button{background:var(--card);color:var(--mu);border:1px solid var(--line);padding:9px 14px;border-radius:10px;cursor:pointer;white-space:nowrap;font:inherit;font-weight:600}nav button.on{background:var(--pr);color:#fff;border-color:var(--pr)}
+main{padding:6px 16px 60px;max-width:1100px;margin:auto}.box{max-width:380px;margin:12vh auto;background:var(--card);padding:24px;border-radius:16px;border:1px solid var(--line)}
+input,select,textarea{width:100%;padding:11px 12px;margin:5px 0 10px;background:#0b1630;border:1px solid var(--line);border-radius:10px;color:var(--tx);font:inherit}
+button.b{background:var(--pr);color:#fff;border:0;padding:10px 14px;border-radius:10px;font:inherit;font-weight:700;cursor:pointer}button.b.ok{background:var(--ok)}button.b.bad{background:var(--bad)}button.b.gh{background:#1c2c5e}button.b.sm{padding:6px 10px;font-size:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:8px 0 14px}.st{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}.st b{display:block;font-size:24px}.st span{color:var(--mu);font-size:12px}
+.tw{overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:14px}table{border-collapse:collapse;width:100%;min-width:720px}th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--mu);font-size:12px;text-transform:uppercase}
+.tg{padding:3px 9px;border-radius:99px;font-size:12px;font-weight:700}.Pending{background:#4a3a0a;color:#fbbf24}.Completed{background:#0c3b21;color:#4ade80}.Cancelled,.Rejected{background:#4a1111;color:#f87171}
+.bar{display:flex;gap:8px;margin:8px 0;flex-wrap:wrap}.bar input,.bar select{margin:0;flex:1;min-width:140px}.act{display:flex;gap:6px;flex-wrap:wrap}.fm{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;max-width:560px}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#fff;color:#0b1630;padding:10px 18px;border-radius:99px;font-weight:700;display:none;z-index:9}.mu{color:var(--mu)}
+</style></head><body>
+<div id="app"></div><div id="toast"></div>
+<script type="module">
+import { firebaseConfig as C, FB_VER as V } from './firebase-config.js';
+const G='https://www.gstatic.com/firebasejs/'+V+'/';
+const {initializeApp}=await import(G+'firebase-app.js'),A=await import(G+'firebase-auth.js'),D=await import(G+'firebase-database.js');
+const app=initializeApp(C),auth=A.getAuth(app),db=D.getDatabase(app),R=p=>D.ref(db,p);
+const $=id=>document.getElementById(id),esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const r2=n=>Math.round(n*100)/100,fd=t=>t?new Date(t).toLocaleString('en-GB',{hour12:true}):'';
+let S={users:{},orders:{},deposits:{},settings:{}},tab='dash',q='',fil='',subs=[],me=null;
+const toast=m=>{const t=$('toast');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',2400)};
+const L=o=>Object.entries(o||{}).map(([id,v])=>({id,...v})).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+
+function loginView(msg){
+  $('app').innerHTML=`<div class="box"><h2 style="margin-top:0">Admin Login</h2><input id="e" type="email" placeholder="Email"><input id="p" type="password" placeholder="Password"><div style="color:#f87171;min-height:20px" id="m">${msg||''}</div><button class="b" style="width:100%" id="go">Login</button></div>`;
+  const go=async()=>{try{await A.signInWithEmailAndPassword(auth,$('e').value.trim(),$('p').value)}catch(e){$('m').textContent='ইমেইল বা পাসওয়ার্ড ভুল'}};
+  $('go').onclick=go;$('p').onkeydown=e=>e.key==='Enter'&&go();
+}
+A.onAuthStateChanged(auth,async u=>{
+  subs.forEach(f=>f());subs=[];me=u;if(!u)return loginView();
+  let ok=false;try{ok=(await D.get(R('admins/'+u.uid))).val()===true}catch(e){}
+  if(!ok){$('app').innerHTML=`<div class="box"><h3 style="margin-top:0">অ্যাক্সেস নেই</h3><p class="mu">এই অ্যাকাউন্ট অ্যাডমিন নয়। Firebase Console → Realtime Database → <b>admins</b> নোডে নিচের UID দিয়ে <b>true</b> সেট করুন:</p><input readonly value="${u.uid}" onclick="this.select()"><button class="b gh" id="lo">Logout</button></div>`;$('lo').onclick=()=>A.signOut(auth);return}
+  for(const k of ['users','orders','deposits','settings'])subs.push(D.onValue(R(k),s=>{S[k]=s.val()||{};draw()}));
+  frame();
+});
+function frame(){
+  $('app').innerHTML=`<header><h1>⚡ ${esc(S.settings.siteName||'Admin Panel')}</h1><a href="/admin/site">Site Content (CMS)</a><a href="/" target="_blank">Website</a><span class="mu">${esc(me.email)}</span><button class="b gh sm" id="lo">Logout</button></header>
+  <nav id="nv"></nav><main id="mn"></main>`;$('lo').onclick=()=>A.signOut(auth);draw();
+}
+const TABS=[['dash','Dashboard'],['orders','Orders'],['deposits','Add Money'],['users','Users'],['settings','Settings']];
+function draw(){
+  if(!me||!$('mn'))return;const pend=L(S.orders).filter(o=>o.status==='Pending').length,pd=L(S.deposits).filter(o=>o.status==='Pending').length;
+  $('nv').innerHTML=TABS.map(([k,n])=>`<button data-t="${k}" class="${tab===k?'on':''}">${n}${k==='orders'&&pend?' ('+pend+')':''}${k==='deposits'&&pd?' ('+pd+')':''}</button>`).join('');
+  $('nv').querySelectorAll('button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;q='';fil='';draw()});
+  if(document.activeElement&&document.activeElement.id==='sq')return;
+  ({dash,orders,deposits,users,settings})[tab]();
+}
+function dash(){
+  const o=L(S.orders),d=L(S.deposits),u=L(S.users),day=new Date().setHours(0,0,0,0),done=o.filter(x=>x.status==='Completed');
+  const sum=a=>r2(a.reduce((s,x)=>s+(+x.price||+x.amount||0),0));
+  $('mn').innerHTML=`<div class="grid">${[['Total Users',u.length],['Wallet Balance (all)',sum(u.map(x=>({amount:x.balance})))+'৳'],['Pending Orders',o.filter(x=>x.status==='Pending').length],['Pending Add Money',d.filter(x=>x.status==='Pending').length],['Today Sales',sum(done.filter(x=>x.updatedAt>=day))+'৳'],['Total Sales',sum(done)+'৳'],['Total Deposits',sum(d.filter(x=>x.status==='Completed'))+'৳'],['Total Orders',o.length]].map(a=>`<div class="st"><b>${a[1]}</b><span>${a[0]}</span></div>`).join('')}</div><h3>সর্বশেষ অর্ডার</h3>${otable(o.slice(0,8),true)}`;
+}
+function bar(opts){return `<div class="bar"><input id="sq" placeholder="Search..." value="${esc(q)}"><select id="sf"><option value="">All</option>${opts.map(x=>`<option ${fil===x?'selected':''}>${x}</option>`).join('')}</select></div>`}
+function hook(){const s=$('sq');if(!s)return;s.oninput=()=>{q=s.value;draw2()};$('sf').onchange=e=>{fil=e.target.value;draw()}}
+function draw2(){const p=$('sq').selectionStart;draw2.l();$('sq').focus();$('sq').setSelectionRange(p,p)}
+const match=x=>(!fil||x.status===fil)&&(!q||JSON.stringify(x).toLowerCase().includes(q.toLowerCase()));
+function otable(a,ro){
+  return `<div class="tw"><table><tr><th>#</th><th>User</th><th>Product</th><th>Player ID</th><th>Price</th><th>Date</th><th>Status</th>${ro?'':'<th></th>'}</tr>${a.map(o=>`<tr><td>${esc(o.no)}</td><td>${esc(o.userName)}<br><span class="mu">${esc(o.email)}</span></td><td>${esc(o.product)}<br><b>${esc(o.package)}</b></td><td><b>${esc(o.playerId)}</b></td><td>${o.price}৳</td><td class="mu">${fd(o.createdAt)}</td><td><span class="tg ${o.status}">${o.status}</span></td>${ro?'':`<td><div class="act">${o.status==='Pending'?`<button class="b ok sm" data-a="done" data-id="${o.id}">Complete</button><button class="b bad sm" data-a="cancel" data-id="${o.id}">Cancel+Refund</button>`:''}</div></td>`}</tr>`).join('')||'<tr><td colspan=8 class="mu">কিছু নেই</td></tr>'}</table></div>`;
+}
+function orders(){draw2.l=orders;$('mn').innerHTML=bar(['Pending','Completed','Cancelled'])+otable(L(S.orders).filter(match));hook();
+  $('mn').querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>oAct(b.dataset.a,b.dataset.id))}
+async function oAct(a,id){
+  const o=S.orders[id];if(!o)return;
+  if(a==='done'){await D.update(R('orders/'+id),{status:'Completed',updatedAt:Date.now()});return toast('Completed')}
+  if(!confirm('অর্ডার ক্যান্সেল করে '+o.price+'৳ রিফান্ড করবেন?'))return;
+  const t=await D.runTransaction(R('orders/'+id+'/status'),s=>s==='Pending'?'Cancelled':undefined);
+  if(!t.committed)return toast('আগেই আপডেট হয়েছে');
+  await D.runTransaction(R('users/'+o.uid+'/balance'),b=>r2((+b||0)+(+o.price)));await D.update(R('orders/'+id),{updatedAt:Date.now()});toast('Refunded')
+}
+function deposits(){draw2.l=deposits;const a=L(S.deposits).filter(match);
+  $('mn').innerHTML=bar(['Pending','Completed','Rejected'])+`<div class="tw"><table><tr><th>User</th><th>Method</th><th>Amount</th><th>Sender</th><th>TrxID</th><th>Date</th><th>Status</th><th></th></tr>${a.map(d=>`<tr><td>${esc(d.userName)}</td><td>${esc(d.method)}</td><td><b>${d.amount}৳</b></td><td>${esc(d.sender)}</td><td><b>${esc(d.trx)}</b></td><td class="mu">${fd(d.createdAt)}</td><td><span class="tg ${d.status}">${d.status}</span></td><td>${d.status==='Pending'?`<div class="act"><button class="b ok sm" data-a="ok" data-id="${d.id}">Approve</button><button class="b bad sm" data-a="no" data-id="${d.id}">Reject</button></div>`:''}</td></tr>`).join('')||'<tr><td colspan=8 class="mu">কিছু নেই</td></tr>'}</table></div>`;hook();
+  $('mn').querySelectorAll('[data-a]').forEach(b=>b.onclick=async()=>{const d=S.deposits[b.dataset.id],ok=b.dataset.a==='ok';
+    if(ok&&!confirm(d.amount+'৳ ব্যালেন্সে যোগ করবেন? TrxID: '+d.trx))return;
+    const t=await D.runTransaction(R('deposits/'+b.dataset.id+'/status'),s=>s==='Pending'?(ok?'Completed':'Rejected'):undefined);
+    if(!t.committed)return toast('আগেই আপডেট হয়েছে');
+    if(ok)await D.runTransaction(R('users/'+d.uid+'/balance'),x=>r2((+x||0)+(+d.amount)));toast(ok?'Balance added':'Rejected')})}
+function users(){draw2.l=users;const a=L(S.users).filter(u=>!q||JSON.stringify(u).toLowerCase().includes(q.toLowerCase()));
+  $('mn').innerHTML=`<div class="bar"><input id="sq" placeholder="নাম / ইমেইল সার্চ" value="${esc(q)}"></div><div class="tw"><table><tr><th>Name</th><th>Email</th><th>Balance</th><th>Joined</th><th></th></tr>${a.map(u=>`<tr><td>${esc(u.name)} ${u.banned?'<span class="tg Cancelled">Banned</span>':''}</td><td>${esc(u.email)}</td><td><b>${r2(+u.balance||0)}৳</b></td><td class="mu">${fd(u.createdAt)}</td><td><div class="act"><button class="b sm" data-a="bal" data-id="${u.id}">± Balance</button><button class="b gh sm" data-a="ban" data-id="${u.id}">${u.banned?'Unban':'Ban'}</button></div></td></tr>`).join('')}</table></div>`;
+  const s=$('sq');s.oninput=()=>{q=s.value;draw2()};
+  $('mn').querySelectorAll('[data-a]').forEach(b=>b.onclick=async()=>{const u=S.users[b.dataset.id];
+    if(b.dataset.a==='ban'){await D.update(R('users/'+b.dataset.id),{banned:!u.banned});return toast('Updated')}
+    const v=prompt(u.name+' এর ব্যালেন্সে কত যোগ/বিয়োগ করবেন? (বিয়োগ হলে -50)');const n=parseFloat(v);if(!n)return;
+    await D.runTransaction(R('users/'+b.dataset.id+'/balance'),x=>Math.max(0,r2((+x||0)+n)));toast('Balance updated')})}
+function settings(){const s=S.settings,p=s.payment||{};
+  $('mn').innerHTML=`<div class="fm"><h3 style="margin-top:0">Payment Numbers</h3><label>bKash (Personal)</label><input id="s1" value="${esc(p.bkash)}"><label>Nagad (Personal)</label><input id="s2" value="${esc(p.nagad)}"><label>Rocket (Personal)</label><input id="s3" value="${esc(p.rocket)}"><label>সর্বনিম্ন Add Money (৳)</label><input id="s4" type="number" value="${esc(p.min||10)}"><label>পেমেন্ট নোট (ইউজার দেখবে)</label><input id="s5" value="${esc(p.note)}" placeholder="যেমন: Send Money করুন, Cash Out নয়">
+  <h3>Website</h3><label>Popup / Notice টেক্সট</label><textarea id="s6" rows="3">${esc(s.notice)}</textarea><label><input type="checkbox" id="s7" ${s.maintenance?'checked':''} style="width:auto"> Maintenance Mode (অর্ডার বন্ধ)</label><input id="s8" value="${esc(s.maintenanceText)}" placeholder="মেইনটেন্যান্স মেসেজ"><button class="b" id="sv">Save</button></div>`;
+  $('sv').onclick=async()=>{await D.set(R('settings'),{payment:{bkash:$('s1').value.trim(),nagad:$('s2').value.trim(),rocket:$('s3').value.trim(),min:+$('s4').value||10,note:$('s5').value.trim()},notice:$('s6').value,maintenance:$('s7').checked,maintenanceText:$('s8').value});toast('Saved ✅')}}
+</script></body></html>

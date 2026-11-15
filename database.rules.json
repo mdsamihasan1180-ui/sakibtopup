@@ -1,0 +1,43 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "admins": {
+      "$uid": { ".read": "auth != null && auth.uid === $uid", ".write": false }
+    },
+    "settings": {
+      ".read": true,
+      ".write": "auth != null && root.child('admins').child(auth.uid).val() === true"
+    },
+    "users": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true",
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).val() === true)",
+        "balance": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && (root.child('admins').child(auth.uid).val() === true || (!data.exists() && newData.val() === 0) || (data.exists() && newData.val() <= data.val()))"
+        },
+        "banned": {
+          ".validate": "newData.isBoolean() && (root.child('admins').child(auth.uid).val() === true || (!data.exists() && newData.val() === false) || newData.val() === data.val())"
+        },
+        "pin": { ".validate": "root.child('admins').child(auth.uid).val() === true || !data.exists() || newData.val() === data.val()" }
+      }
+    },
+    "orders": {
+      ".indexOn": ["uid", "status"],
+      ".read": "auth != null && (root.child('admins').child(auth.uid).val() === true || (query.orderByChild === 'uid' && query.equalTo === auth.uid))",
+      "$id": {
+        ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || (!data.exists() && newData.child('uid').val() === auth.uid && newData.child('status').val() === 'Pending'))",
+        ".validate": "root.child('admins').child(auth.uid).val() === true || (newData.child('price').isNumber() && newData.child('price').val() > 0 && (root.child('users').child(auth.uid).child('balance').val() - newRoot.child('users').child(auth.uid).child('balance').val()) >= newData.child('price').val() && root.child('users').child(auth.uid).child('banned').val() !== true)"
+      }
+    },
+    "deposits": {
+      ".indexOn": ["uid", "status", "trx"],
+      ".read": "auth != null && (root.child('admins').child(auth.uid).val() === true || (query.orderByChild === 'uid' && query.equalTo === auth.uid))",
+      "$id": {
+        ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || (!data.exists() && newData.child('uid').val() === auth.uid && newData.child('status').val() === 'Pending'))",
+        ".validate": "root.child('admins').child(auth.uid).val() === true || (newData.child('amount').isNumber() && newData.child('amount').val() > 0)"
+      }
+    }
+  }
+}
